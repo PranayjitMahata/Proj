@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract PharmaSupplyChain {
+    uint256 constant SCALING_FACTOR = 100;  // For two decimal places
+
+    struct Data {
+        uint256 temperature;  // Scaled by SCALING_FACTOR
+        uint256 moisture;     // Scaled by SCALING_FACTOR
+        uint256 pressure;     // Scaled by SCALING_FACTOR
+        uint256 timestamp;
+        string gps;
+    }
+
+    struct Medicine {
+        uint256 batchId;
+        string name;
+        address manufacturer;
+        address currentOwner;
+        bool isShipped;
+        bool isReceived;
+        Data[] dataRecords;
+    }
+
+    mapping(uint256 => Medicine) public medicines;
+
+    event MedicineAdded(uint256 batchId, string name, address indexed manufacturer);
+    event MedicineShipped(uint256 batchId, address indexed from, address indexed to);
+    event MedicineReceived(uint256 batchId, address indexed receiver);
+    event DataAdded(uint256 indexed batchId, uint256 temperature, uint256 moisture, uint256 pressure, uint256 timestamp, string gps);
+
+    function addMedicine(uint256 batchId, string memory name) public {
+        require(medicines[batchId].batchId == 0, "Medicine batch already exists");
+        
+        Medicine storage newMedicine = medicines[batchId];
+        newMedicine.batchId = batchId;
+        newMedicine.name = name;
+        newMedicine.manufacturer = msg.sender;
+        newMedicine.currentOwner = msg.sender;
+        newMedicine.isShipped = false;
+        newMedicine.isReceived = false;
+
+        emit MedicineAdded(batchId, name, msg.sender);
+    }
+
+    function addData(
+        uint256 batchId,
+        uint256 _temperature,
+        uint256 _moisture,
+        uint256 _pressure,
+        uint256 _timestamp,
+        string memory _gps
+    ) public {
+        require(medicines[batchId].batchId != 0, "Medicine batch does not exist");
+        require(medicines[batchId].currentOwner == msg.sender, "Only the current owner can add data");
+
+        Data memory newData = Data({
+            temperature: _temperature,
+            moisture: _moisture,
+            pressure: _pressure,
+            timestamp: _timestamp,
+            gps: _gps
+        });
+
+        medicines[batchId].dataRecords.push(newData);
+
+        emit DataAdded(batchId, _temperature, _moisture, _pressure, _timestamp, _gps);
+    }
+
+    function shipMedicine(uint256 batchId, address to) public {
+        Medicine storage medicine = medicines[batchId];
+        
+        require(medicine.batchId != 0, "Medicine batch does not exist");
+        require(medicine.currentOwner == msg.sender, "Only the current owner can ship the medicine");
+        require(!medicine.isShipped, "Medicine already shipped");
+
+        medicine.isShipped = true;
+        medicine.currentOwner = to;
+
+        emit MedicineShipped(batchId, msg.sender, to);
+    }
+
+    function receiveMedicine(uint256 batchId) public {
+        Medicine storage medicine = medicines[batchId];
+
+        require(medicine.batchId != 0, "Medicine batch does not exist");
+        require(medicine.currentOwner == msg.sender, "Only the current owner can receive the medicine");
+        require(medicine.isShipped, "Medicine has not been shipped yet");
+        require(!medicine.isReceived, "Medicine already received");
+
+        medicine.isReceived = true;
+
+        emit MedicineReceived(batchId, msg.sender);
+    }
+
+    function getDataCount(uint256 batchId) public view returns (uint256) {
+        require(medicines[batchId].batchId != 0, "Medicine batch does not exist");
+        return medicines[batchId].dataRecords.length;
+    }
+
+    function getData(uint256 batchId, uint256 dataId) public view returns (
+        uint256 temperature,
+        uint256 moisture,
+        uint256 pressure,
+        uint256 timestamp,
+        string memory gps
+    ) {
+        require(medicines[batchId].batchId != 0, "Medicine batch does not exist");
+        Data memory data = medicines[batchId].dataRecords[dataId];
+        return (
+            data.temperature,
+            data.moisture,
+            data.pressure,
+            data.timestamp,
+            data.gps
+        );
+    }
+}
